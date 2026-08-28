@@ -1,0 +1,6 @@
+{
+  "name": "Trading Journal & Risk Calculator",
+  "description": "Modern Trading Journal and Risk Management app with unified position sizing calculator, customizable pre-trade checklists, interactive equity curve, and PnL analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
