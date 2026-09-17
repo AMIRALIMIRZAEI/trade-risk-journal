@@ -36,7 +36,9 @@ data class TradeEntity(
   val imageUri: String? = null, // Internal path or URI for attached chart screenshot
   val completedChecklistIds: String = "", // Comma-separated IDs of checklist rules met
   val openTimestamp: Long = System.currentTimeMillis(),
-  val closeTimestamp: Long? = null
+  val closeTimestamp: Long? = null,
+  val emotion: String = "Calm", // e.g. Calm, FOMO, Revenge, Fear, Greed
+  val lessonsLearned: String = "" // Post-trade reflections & mindset lessons
 ) {
   // Notional Position Size ($) = Margin * Leverage
   val notionalSize: Double
@@ -65,4 +67,25 @@ data class TradeEntity(
   // Potential Profit ($) = Risk Amount * R:R
   val potentialProfit: Double
     get() = riskAmount * riskRewardRatio
+}
+
+enum class TradeEmotion(
+  val label: String,
+  val emoji: String,
+  val description: String
+) {
+  CALM("Calm", "🧘", "Disciplined, clear head, followed rules"),
+  FOMO("FOMO", "⚡", "Chased green candle, fear of missing move"),
+  REVENGE("Revenge", "🔥", "Impulsive trade right after a loss"),
+  FEAR("Fear", "😰", "Anxious, hesitated entry, cut early"),
+  GREED("Greed", "🤑", "Overleveraged, held too long past target");
+
+  companion object {
+    val all = entries
+
+    fun fromLabel(label: String?): TradeEmotion {
+      if (label.isNullOrBlank()) return CALM
+      return entries.find { it.label.equals(label, ignoreCase = true) } ?: CALM
+    }
+  }
 }

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,9 +24,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.WarningAmber
@@ -53,11 +56,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.model.TradeEmotion
 import com.example.data.model.TradeEntity
 import com.example.data.model.TradeStatus
 import com.example.data.model.TradeType
@@ -172,14 +178,32 @@ fun TradeLogScreen(
             }
           }
 
-          IconButton(
-            onClick = onNavigateToNewTrade,
-            modifier = Modifier
-              .size(38.dp)
-              .background(EmeraldGreenBg, CircleShape)
-              .testTag("log_screen_new_trade_button")
-          ) {
-            Icon(Icons.Default.Add, contentDescription = "Add Trade", tint = EmeraldGreenDark, modifier = Modifier.size(22.dp))
+          val context = LocalContext.current
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+              onClick = {
+                val intent = viewModel.createShareCsvIntent(context)
+                context.startActivity(Intent.createChooser(intent, "Export Trading Journal CSV"))
+              },
+              modifier = Modifier
+                .size(38.dp)
+                .background(IndigoLightBg, CircleShape)
+                .testTag("export_trades_csv_button")
+            ) {
+              Icon(Icons.Default.Share, contentDescription = "Export CSV", tint = IndigoPrimary, modifier = Modifier.size(20.dp))
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            IconButton(
+              onClick = onNavigateToNewTrade,
+              modifier = Modifier
+                .size(38.dp)
+                .background(EmeraldGreenBg, CircleShape)
+                .testTag("log_screen_new_trade_button")
+            ) {
+              Icon(Icons.Default.Add, contentDescription = "Add Trade", tint = EmeraldGreenDark, modifier = Modifier.size(22.dp))
+            }
           }
         }
       }
@@ -190,7 +214,7 @@ fun TradeLogScreen(
       OutlinedTextField(
         value = searchQuery,
         onValueChange = { viewModel.setSearchQuery(it) },
-        placeholder = { Text("Search by symbol, strategy, or notes...", color = Slate400) },
+        placeholder = { Text("Search by symbol, strategy, emotion, or notes...", color = Slate400) },
         leadingIcon = {
           Icon(Icons.Default.Search, contentDescription = null, tint = Slate400)
         },
@@ -212,7 +236,7 @@ fun TradeLogScreen(
     // 3. Filter Chips Row
     item {
       LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(filters) { (filter, label) ->
+        items(filters, key = { it.first.name }) { (filter, label) ->
           val isSelected = activeFilter == filter
           FilterChip(
             selected = isSelected,
@@ -223,6 +247,35 @@ fun TradeLogScreen(
               selectedLabelColor = SurfaceWhite
             ),
             shape = RoundedCornerShape(12.dp)
+          )
+        }
+      }
+    }
+
+    // 4. Emotion Psychology Filter Chips Row
+    item {
+      val activeEmotionFilter by viewModel.emotionFilter.collectAsStateWithLifecycle()
+      val emotionFilterOptions = listOf(
+        null to "All Mindsets",
+        "Calm" to "🧘 Calm",
+        "FOMO" to "⚡ FOMO",
+        "Revenge" to "🔥 Revenge",
+        "Fear" to "😰 Fear",
+        "Greed" to "🤑 Greed"
+      )
+      LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(emotionFilterOptions, key = { it.second }) { (emotionVal, label) ->
+          val isSelected = activeEmotionFilter == emotionVal
+          FilterChip(
+            selected = isSelected,
+            onClick = { viewModel.setEmotionFilter(emotionVal) },
+            label = { Text(label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium) },
+            colors = FilterChipDefaults.filterChipColors(
+              selectedContainerColor = Slate800,
+              selectedLabelColor = SurfaceWhite
+            ),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.testTag("emotion_filter_${emotionVal?.lowercase() ?: "all"}")
           )
         }
       }
@@ -455,6 +508,22 @@ private fun TradeLogCard(
                   fontSize = 10.sp
                 )
               }
+
+              val emoObj = remember(trade.emotion) { TradeEmotion.fromLabel(trade.emotion) }
+              Spacer(modifier = Modifier.width(5.dp))
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = IndigoLightBg
+              ) {
+                Text(
+                  text = "${emoObj.emoji} ${emoObj.label}",
+                  style = MaterialTheme.typography.labelSmall,
+                  fontWeight = FontWeight.Bold,
+                  color = IndigoDark,
+                  modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                  fontSize = 10.sp
+                )
+              }
             }
             Text(
               text = "${DateTimeUtils.formatDate(trade.openTimestamp)} • ${trade.strategyTag}",
@@ -530,6 +599,32 @@ private fun TradeLogCard(
         Column {
           Text("MARGIN", style = MaterialTheme.typography.labelSmall, color = Slate500, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
           Text(DateTimeUtils.formatCurrency(trade.marginAmount), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Slate900)
+        }
+      }
+
+      if (trade.lessonsLearned.isNotBlank()) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = Slate50,
+          border = BorderStroke(1.dp, Slate200),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text("🧠", fontSize = 11.sp)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+              text = trade.lessonsLearned,
+              style = MaterialTheme.typography.bodySmall,
+              color = Slate700,
+              fontSize = 11.sp,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+          }
         }
       }
 

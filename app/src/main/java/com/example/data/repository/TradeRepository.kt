@@ -12,6 +12,8 @@ class TradeRepository(private val tradeDao: TradeDao) {
 
   suspend fun insertTrade(trade: TradeEntity): Long = tradeDao.insertTrade(trade)
 
+  suspend fun insertTrades(trades: List<TradeEntity>) = tradeDao.insertTrades(trades)
+
   suspend fun updateTrade(trade: TradeEntity) = tradeDao.updateTrade(trade)
 
   suspend fun deleteTrade(trade: TradeEntity) = tradeDao.deleteTrade(trade)

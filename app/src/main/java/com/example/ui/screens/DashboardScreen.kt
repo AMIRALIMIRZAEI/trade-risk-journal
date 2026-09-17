@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -28,9 +33,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Percent
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TrendingDown
@@ -42,8 +53,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -59,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -66,9 +80,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.model.TradeEmotion
 import com.example.data.model.TradeEntity
 import com.example.data.model.TradeStatus
 import com.example.data.model.TradeType
+import com.example.viewmodel.EmotionStat
 import com.example.ui.components.BentoTileStyle
 import com.example.ui.components.CloseTradeDialog
 import com.example.ui.components.EditTradeDialog
@@ -128,19 +144,31 @@ fun DashboardScreen(
   val selectedMonth by viewModel.selectedMonth.collectAsStateWithLifecycle()
   val selectedDayKey by viewModel.selectedDayKey.collectAsStateWithLifecycle()
   val allTrades by viewModel.allTrades.collectAsStateWithLifecycle()
+  val openTrades by viewModel.openTrades.collectAsStateWithLifecycle()
+  val recentTrades by viewModel.recentTrades.collectAsStateWithLifecycle()
+  val closedTrades by viewModel.closedTrades.collectAsStateWithLifecycle()
   val checklistItems by viewModel.checklistItems.collectAsStateWithLifecycle()
   val accountSettings by viewModel.accountSettings.collectAsStateWithLifecycle()
+  val psychologyStats by viewModel.psychologyStats.collectAsStateWithLifecycle()
 
+  val context = LocalContext.current
   var showCapitalEditDialog by remember { mutableStateOf(false) }
+  var showRestoreConfirmDialog by remember { mutableStateOf<Uri?>(null) }
+  var isRestoring by remember { mutableStateOf(false) }
+
+  val restoreFileLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.OpenDocument()
+  ) { uri: Uri? ->
+    if (uri != null) {
+      showRestoreConfirmDialog = uri
+    }
+  }
+
   var tradeToClose by remember { mutableStateOf<TradeEntity?>(null) }
   var selectedTradeForDetail by remember { mutableStateOf<TradeEntity?>(null) }
   var tradeToEdit by remember { mutableStateOf<TradeEntity?>(null) }
   var tradeToDelete by remember { mutableStateOf<TradeEntity?>(null) }
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-  val openTrades = remember(allTrades) { allTrades.filter { it.status == TradeStatus.OPEN } }
-  val recentTrades = remember(allTrades) { allTrades.take(5) }
-  val closedTradesList = remember(allTrades) { allTrades.filter { it.status != TradeStatus.OPEN } }
 
   LazyColumn(
     modifier = modifier
@@ -238,11 +266,11 @@ fun DashboardScreen(
           Spacer(modifier = Modifier.height(14.dp))
 
           // Mini PnL Distribution Bars
-          val displayTrades = remember(closedTradesList) {
-            if (closedTradesList.isEmpty()) {
+          val displayTrades = remember(closedTrades) {
+            if (closedTrades.isEmpty()) {
               listOf(0.3, 0.45, -0.2, 0.6, 0.85, 0.75, 1.0)
             } else {
-              val sample = closedTradesList.take(7).reversed()
+              val sample = closedTrades.take(7).reversed()
               val maxAbs = sample.map { abs(it.realizedPnl ?: 0.0) }.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
               sample.map { (it.realizedPnl ?: 0.0) / maxAbs }
             }
@@ -551,7 +579,29 @@ fun DashboardScreen(
       )
     }
 
-    // 7. Active / Open Trades
+    // 7. Trader Psychology & Mindset Insights Bento Card
+    item {
+      PsychologyInsightsCard(psychologyStats = psychologyStats)
+    }
+
+    // 8. Data Export & Cloud Backup Bento Card
+    item {
+      DataManagementCard(
+        onExportCsv = {
+          val intent = viewModel.createShareCsvIntent(context)
+          context.startActivity(Intent.createChooser(intent, "Export Trades CSV"))
+        },
+        onBackupJson = {
+          val intent = viewModel.createShareBackupIntent(context)
+          context.startActivity(Intent.createChooser(intent, "Backup Database (JSON)"))
+        },
+        onRestoreClick = {
+          restoreFileLauncher.launch(arrayOf("application/json", "*/*"))
+        }
+      )
+    }
+
+    // 9. Active / Open Trades
     if (openTrades.isNotEmpty()) {
       item {
         Row(
@@ -577,7 +627,7 @@ fun DashboardScreen(
         }
       }
 
-      items(openTrades) { trade ->
+      items(openTrades, key = { it.id }) { trade ->
         BentoTradeItem(
           trade = trade,
           onClick = { selectedTradeForDetail = trade },
@@ -648,7 +698,7 @@ fun DashboardScreen(
         }
       }
     } else {
-      items(recentTrades) { trade ->
+      items(recentTrades, key = { it.id }) { trade ->
         BentoTradeItem(
           trade = trade,
           onClick = { selectedTradeForDetail = trade },
@@ -710,6 +760,100 @@ fun DashboardScreen(
       dismissButton = {
         OutlinedButton(
           onClick = { showCapitalEditDialog = false },
+          shape = RoundedCornerShape(10.dp)
+        ) {
+          Text("Cancel")
+        }
+      },
+      containerColor = SurfaceWhite,
+      shape = RoundedCornerShape(24.dp)
+    )
+  }
+
+  // Restore Confirmation Dialog
+  showRestoreConfirmDialog?.let { uri ->
+    var replaceAll by remember { mutableStateOf(false) }
+    AlertDialog(
+      onDismissRequest = { if (!isRestoring) showRestoreConfirmDialog = null },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            imageVector = Icons.Default.Restore,
+            contentDescription = null,
+            tint = IndigoPrimary,
+            modifier = Modifier.size(24.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = "Restore Trading Journal",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Slate900
+          )
+        }
+      },
+      text = {
+        Column {
+          Text(
+            text = "Do you want to restore journal data from this JSON backup file?",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Slate700
+          )
+          Spacer(modifier = Modifier.height(12.dp))
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable { replaceAll = !replaceAll }
+              .background(if (replaceAll) CrimsonRedBg else Slate100, RoundedCornerShape(8.dp))
+              .padding(8.dp)
+          ) {
+            androidx.compose.material3.Checkbox(
+              checked = replaceAll,
+              onCheckedChange = { replaceAll = it }
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Column {
+              Text(
+                text = "Replace all existing data",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = if (replaceAll) CrimsonRed else Slate800
+              )
+              Text(
+                text = "If unchecked, records will merge with current data.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Slate500
+              )
+            }
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            isRestoring = true
+            viewModel.restoreDatabaseFromUri(context, uri, replaceAll = replaceAll) { result ->
+              isRestoring = false
+              showRestoreConfirmDialog = null
+              result.onSuccess { count ->
+                Toast.makeText(context, "Successfully restored $count trades!", Toast.LENGTH_LONG).show()
+              }.onFailure { error ->
+                Toast.makeText(context, "Restore failed: ${error.localizedMessage ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+              }
+            }
+          },
+          enabled = !isRestoring,
+          colors = ButtonDefaults.buttonColors(containerColor = if (replaceAll) CrimsonRed else IndigoPrimary),
+          shape = RoundedCornerShape(10.dp)
+        ) {
+          Text(if (isRestoring) "Restoring..." else "Confirm Restore")
+        }
+      },
+      dismissButton = {
+        OutlinedButton(
+          onClick = { showRestoreConfirmDialog = null },
+          enabled = !isRestoring,
           shape = RoundedCornerShape(10.dp)
         ) {
           Text("Cancel")
@@ -949,6 +1093,244 @@ fun BentoTradeItem(
             Box(modifier = Modifier.size(5.dp).background(Slate300, CircleShape))
             Box(modifier = Modifier.size(5.dp).background(if (isWin) EmeraldGreenLight else Slate300, CircleShape))
           }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun PsychologyInsightsCard(
+  psychologyStats: List<EmotionStat>,
+  modifier: Modifier = Modifier
+) {
+  Card(
+    modifier = modifier
+      .fillMaxWidth()
+      .testTag("psychology_insights_card"),
+    shape = RoundedCornerShape(26.dp),
+    colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
+    border = BorderStroke(1.dp, BorderSubtle),
+    elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(18.dp)
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(
+            modifier = Modifier
+              .size(36.dp)
+              .background(IndigoLightBg, CircleShape),
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              imageVector = Icons.Default.Psychology,
+              contentDescription = null,
+              tint = IndigoPrimary,
+              modifier = Modifier.size(20.dp)
+            )
+          }
+          Spacer(modifier = Modifier.width(10.dp))
+          Column {
+            Text(
+              text = "Trader Psychology & Mindset",
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              color = Slate900
+            )
+            Text(
+              text = "Win rate & performance by emotional state",
+              style = MaterialTheme.typography.bodySmall,
+              color = Slate500
+            )
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        psychologyStats.forEach { stat ->
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Slate50,
+            border = BorderStroke(1.dp, Slate200.copy(alpha = 0.6f)),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Text(text = stat.emoji, fontSize = 16.sp)
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = stat.emotion,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate800
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = "(${stat.totalTrades} trades)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Slate500
+                  )
+                }
+
+                val isGreen = stat.netPnl >= 0
+                Text(
+                  text = "${if (isGreen && stat.netPnl > 0) "+" else ""}${DateTimeUtils.formatCurrency(stat.netPnl)}",
+                  style = MaterialTheme.typography.bodyMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = if (stat.closedTrades == 0) Slate500 else if (isGreen) EmeraldGreenDark else CrimsonRed
+                )
+              }
+
+              Spacer(modifier = Modifier.height(6.dp))
+
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+              ) {
+                LinearProgressIndicator(
+                  progress = { (stat.winRate / 100f).toFloat() },
+                  modifier = Modifier
+                    .weight(1f)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                  color = if (stat.winRate >= 50f) EmeraldGreen else CrimsonRed,
+                  trackColor = Slate200
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                  text = "${stat.winRate.toInt()}% Win (${stat.winsCount}W / ${stat.lossesCount}L)",
+                  style = MaterialTheme.typography.labelSmall,
+                  fontWeight = FontWeight.SemiBold,
+                  color = Slate600
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun DataManagementCard(
+  onExportCsv: () -> Unit,
+  onBackupJson: () -> Unit,
+  onRestoreClick: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Card(
+    modifier = modifier
+      .fillMaxWidth()
+      .testTag("data_management_card"),
+    shape = RoundedCornerShape(26.dp),
+    colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
+    border = BorderStroke(1.dp, BorderSubtle),
+    elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(18.dp)
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier = Modifier
+            .size(36.dp)
+            .background(IndigoLightBg, CircleShape),
+          contentAlignment = Alignment.Center
+        ) {
+          Icon(
+            imageVector = Icons.Default.CloudUpload,
+            contentDescription = null,
+            tint = IndigoPrimary,
+            modifier = Modifier.size(20.dp)
+          )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column {
+          Text(
+            text = "Data Management & Backup",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Slate900
+          )
+          Text(
+            text = "Export records to CSV or backup/restore complete journal",
+            style = MaterialTheme.typography.bodySmall,
+            color = Slate500
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        // CSV Export
+        OutlinedButton(
+          onClick = onExportCsv,
+          modifier = Modifier
+            .weight(1f)
+            .height(44.dp)
+            .testTag("export_csv_btn"),
+          shape = RoundedCornerShape(12.dp),
+          border = BorderStroke(1.dp, Slate200),
+          contentPadding = PaddingValues(horizontal = 8.dp)
+        ) {
+          Icon(Icons.Default.FileDownload, contentDescription = null, tint = IndigoPrimary, modifier = Modifier.size(16.dp))
+          Spacer(modifier = Modifier.width(4.dp))
+          Text("CSV", fontWeight = FontWeight.Bold, color = Slate800, fontSize = 12.sp)
+        }
+
+        // JSON Backup
+        Button(
+          onClick = onBackupJson,
+          modifier = Modifier
+            .weight(1.1f)
+            .height(44.dp)
+            .testTag("backup_json_btn"),
+          shape = RoundedCornerShape(12.dp),
+          colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
+          contentPadding = PaddingValues(horizontal = 8.dp)
+        ) {
+          Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+          Spacer(modifier = Modifier.width(4.dp))
+          Text("Backup", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        }
+
+        // JSON Restore
+        OutlinedButton(
+          onClick = onRestoreClick,
+          modifier = Modifier
+            .weight(1.1f)
+            .height(44.dp)
+            .testTag("restore_json_btn"),
+          shape = RoundedCornerShape(12.dp),
+          border = BorderStroke(1.dp, IndigoPrimary.copy(alpha = 0.4f)),
+          contentPadding = PaddingValues(horizontal = 8.dp)
+        ) {
+          Icon(Icons.Default.Restore, contentDescription = null, tint = IndigoPrimary, modifier = Modifier.size(16.dp))
+          Spacer(modifier = Modifier.width(4.dp))
+          Text("Restore", fontWeight = FontWeight.Bold, color = IndigoPrimary, fontSize = 12.sp)
         }
       }
     }

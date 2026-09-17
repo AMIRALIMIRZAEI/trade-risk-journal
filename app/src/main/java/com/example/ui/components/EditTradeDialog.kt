@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.TradeEmotion
 import com.example.data.model.TradeEntity
 import com.example.data.model.TradeStatus
 import com.example.data.model.TradeType
@@ -82,6 +85,8 @@ fun EditTradeDialog(
   var leverageText by remember { mutableStateOf(trade.leverage.toInt().toString()) }
   var strategyTag by remember { mutableStateOf(trade.strategyTag) }
   var notes by remember { mutableStateOf(trade.notes) }
+  var emotion by remember { mutableStateOf(trade.emotion.ifBlank { "Calm" }) }
+  var lessonsLearned by remember { mutableStateOf(trade.lessonsLearned) }
   var exitPriceText by remember { mutableStateOf(trade.exitPrice?.toString() ?: "") }
 
   val entryPrice = entryPriceText.toDoubleOrNull() ?: trade.entryPrice
@@ -365,6 +370,46 @@ fun EditTradeDialog(
           maxLines = 3,
           shape = RoundedCornerShape(12.dp)
         )
+
+        // Trader Psychology & Emotion Tagging
+        Column(modifier = Modifier.fillMaxWidth()) {
+          Text(
+            text = "TRADER PSYCHOLOGY",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = Slate700,
+            fontSize = 11.sp
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+          LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(TradeEmotion.all, key = { it.label }) { item ->
+              val isSelected = emotion.equals(item.label, ignoreCase = true)
+              FilterChip(
+                selected = isSelected,
+                onClick = { emotion = item.label },
+                label = { Text("${item.emoji} ${item.label}", fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                colors = FilterChipDefaults.filterChipColors(
+                  selectedContainerColor = IndigoPrimary,
+                  selectedLabelColor = SurfaceWhite
+                ),
+                shape = RoundedCornerShape(10.dp)
+              )
+            }
+          }
+        }
+
+        // Lessons Learned & Mindset Notes
+        OutlinedTextField(
+          value = lessonsLearned,
+          onValueChange = { lessonsLearned = it },
+          label = { Text("Lessons Learned / Reflections") },
+          placeholder = { Text("What did this trade teach you about your psychology?") },
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("edit_lessons_learned_input"),
+          maxLines = 2,
+          shape = RoundedCornerShape(12.dp)
+        )
       }
     },
     confirmButton = {
@@ -401,6 +446,8 @@ fun EditTradeDialog(
             leverage = leverage,
             strategyTag = strategyTag.ifBlank { "General" },
             notes = notes,
+            emotion = emotion,
+            lessonsLearned = lessonsLearned,
             exitPrice = if (trade.status != TradeStatus.OPEN) exitPrice else trade.exitPrice,
             realizedPnl = updatedRealizedPnl,
             realizedPnlPercent = updatedRealizedPnlPercent,

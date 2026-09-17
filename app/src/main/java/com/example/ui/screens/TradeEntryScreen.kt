@@ -75,6 +75,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.ChecklistItemEntity
+import com.example.data.model.TradeEmotion
 import com.example.data.model.TradeEntity
 import com.example.data.model.TradeStatus
 import com.example.data.model.TradeType
@@ -113,6 +114,15 @@ import com.example.viewmodel.TradeViewModel
 import java.io.File
 import kotlin.math.abs
 
+data class CalculatedTradeMetrics(
+  val slPercent: Double,
+  val tpPercent: Double,
+  val rrRatio: Double,
+  val notionalSize: Double,
+  val riskAmount: Double,
+  val potentialProfit: Double
+)
+
 @Composable
 fun TradeEntryScreen(
   viewModel: TradeViewModel,
@@ -133,6 +143,8 @@ fun TradeEntryScreen(
   var leverageText by remember { mutableStateOf("5") }
   var strategyTag by remember { mutableStateOf("Breakout") }
   var notesText by remember { mutableStateOf("") }
+  var selectedEmotion by remember { mutableStateOf("Calm") }
+  var lessonsLearnedText by remember { mutableStateOf("") }
   var selectedImageUri by remember { mutableStateOf<String?>(null) }
   var showAddRuleDialog by remember { mutableStateOf(false) }
 
@@ -163,28 +175,38 @@ fun TradeEntryScreen(
     }
   }
 
-  // Real-time calculations
   val entryPrice = entryPriceText.toDoubleOrNull() ?: 0.0
   val stopLoss = stopLossPriceText.toDoubleOrNull() ?: 0.0
   val takeProfit = takeProfitPriceText.toDoubleOrNull() ?: 0.0
   val margin = marginAmountText.toDoubleOrNull() ?: 0.0
   val leverage = leverageText.toDoubleOrNull() ?: 1.0
 
-  val slPercent = if (entryPrice > 0 && stopLoss > 0) {
-    (abs(entryPrice - stopLoss) / entryPrice) * 100.0
-  } else 0.0
+  // Real-time calculations wrapped in remember for zero recomposition lag
+  val (slPercent, tpPercent, rrRatio, notionalSize, riskAmount, potentialProfit) = remember(
+    entryPrice,
+    stopLoss,
+    takeProfit,
+    margin,
+    leverage
+  ) {
+    val sl = if (entryPrice > 0 && stopLoss > 0) {
+      (abs(entryPrice - stopLoss) / entryPrice) * 100.0
+    } else 0.0
 
-  val tpPercent = if (entryPrice > 0 && takeProfit > 0) {
-    (abs(takeProfit - entryPrice) / entryPrice) * 100.0
-  } else 0.0
+    val tp = if (entryPrice > 0 && takeProfit > 0) {
+      (abs(takeProfit - entryPrice) / entryPrice) * 100.0
+    } else 0.0
 
-  val rrRatio = if (slPercent > 0) tpPercent / slPercent else 0.0
-  val notionalSize = margin * leverage
-  val riskAmount = notionalSize * (slPercent / 100.0)
-  val potentialProfit = notionalSize * (tpPercent / 100.0)
+    val rr = if (sl > 0) tp / sl else 0.0
+    val notional = margin * leverage
+    val risk = notional * (sl / 100.0)
+    val profit = notional * (tp / 100.0)
 
-  val sampleStrategies = listOf("Breakout", "S/R Bounce", "Trend Continuation", "Pullback", "Liquidity Sweep", "Reversal")
-  val sampleSymbols = listOf("BTC/USDT", "ETH/USDT", "SOL/USDT", "EUR/USD", "XAU/USD", "NVDA", "AAPL")
+    CalculatedTradeMetrics(sl, tp, rr, notional, risk, profit)
+  }
+
+  val sampleStrategies = remember { listOf("Breakout", "S/R Bounce", "Trend Continuation", "Pullback", "Liquidity Sweep", "Reversal") }
+  val sampleSymbols = remember { listOf("BTC/USDT", "ETH/USDT", "SOL/USDT", "EUR/USD", "XAU/USD", "NVDA", "AAPL") }
 
   LazyColumn(
     modifier = modifier
@@ -374,7 +396,7 @@ fun TradeEntryScreen(
           Spacer(modifier = Modifier.height(6.dp))
 
           LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(sampleSymbols) { sym ->
+            items(sampleSymbols, key = { it }) { sym ->
               FilterChip(
                 selected = symbol == sym,
                 onClick = { symbol = sym },
@@ -742,7 +764,7 @@ fun TradeEntryScreen(
           Spacer(modifier = Modifier.height(10.dp))
 
           LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(sampleStrategies) { tag ->
+            items(sampleStrategies, key = { it }) { tag ->
               FilterChip(
                 selected = strategyTag == tag,
                 onClick = { strategyTag = tag },
@@ -773,7 +795,120 @@ fun TradeEntryScreen(
       }
     }
 
-    // 6. Screenshot / Chart Attachment Bento Card
+    // 6. Trader Psychology & Mindset Tagging Bento Card
+    item {
+      Card(
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("psychology_card"),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
+        border = BorderStroke(1.dp, BorderSubtle),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+      ) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(18.dp)
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                modifier = Modifier
+                  .size(28.dp)
+                  .background(IndigoLightBg, CircleShape),
+                contentAlignment = Alignment.Center
+              ) {
+                Text("🧠", fontSize = 14.sp)
+              }
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "TRADER PSYCHOLOGY & EMOTION",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Slate500,
+                letterSpacing = 1.0.sp
+              )
+            }
+
+            val currentEmotionObj = remember(selectedEmotion) { TradeEmotion.fromLabel(selectedEmotion) }
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = IndigoLightBg
+            ) {
+              Text(
+                text = "${currentEmotionObj.emoji} ${currentEmotionObj.label}",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = IndigoDark,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(10.dp))
+
+          // Clean Emotion Chips Row
+          LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            items(TradeEmotion.all, key = { it.label }) { emotionItem ->
+              val isSelected = selectedEmotion.equals(emotionItem.label, ignoreCase = true)
+              FilterChip(
+                selected = isSelected,
+                onClick = { selectedEmotion = emotionItem.label },
+                label = {
+                  Text(
+                    text = "${emotionItem.emoji} ${emotionItem.label}",
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                  )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                  selectedContainerColor = IndigoPrimary,
+                  selectedLabelColor = SurfaceWhite
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.testTag("emotion_chip_${emotionItem.label.lowercase()}")
+              )
+            }
+          }
+
+          val activeEmotionDesc = remember(selectedEmotion) {
+            TradeEmotion.fromLabel(selectedEmotion).description
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+          Text(
+            text = "State: $activeEmotionDesc",
+            style = MaterialTheme.typography.bodySmall,
+            color = Slate500,
+            fontSize = 11.sp
+          )
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          // Optional Lessons Learned / Reflection notes
+          OutlinedTextField(
+            value = lessonsLearnedText,
+            onValueChange = { lessonsLearnedText = it },
+            label = { Text("Lessons Learned & Mindset Notes (Optional)") },
+            placeholder = { Text("Pre-trade mindset, rules followed or broken, execution reflections...") },
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("lessons_learned_input"),
+            minLines = 2,
+            shape = RoundedCornerShape(12.dp)
+          )
+        }
+      }
+    }
+
+    // 7. Screenshot / Chart Attachment Bento Card
     item {
       Card(
         modifier = Modifier.fillMaxWidth(),
@@ -904,7 +1039,9 @@ fun TradeEntryScreen(
               strategyTag = strategyTag,
               imageUri = selectedImageUri,
               completedChecklistIds = checkedChecklistIds.joinToString(","),
-              openTimestamp = System.currentTimeMillis()
+              openTimestamp = System.currentTimeMillis(),
+              emotion = selectedEmotion,
+              lessonsLearned = lessonsLearnedText.trim()
             )
             viewModel.saveTrade(trade)
             onTradeSaved()

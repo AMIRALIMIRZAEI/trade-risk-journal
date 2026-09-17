@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,10 +95,10 @@ fun CalculatorScreen(
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
 
-  val riskPresets = listOf(0.5, 1.0, 1.5, 2.0, 3.0)
-  val leveragePresets = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0)
-  val capitalPresets = listOf("1000", "5000", "10000", "25000", "50000")
-  val sampleSymbols = listOf("BTC/USDT", "ETH/USDT", "SOL/USDT", "EUR/USD", "XAU/USD", "NVDA", "AAPL")
+  val riskPresets = remember { listOf(0.5, 1.0, 1.5, 2.0, 3.0) }
+  val leveragePresets = remember { listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0) }
+  val capitalPresets = remember { listOf("1000", "5000", "10000", "25000", "50000") }
+  val sampleSymbols = remember { listOf("BTC/USDT", "ETH/USDT", "SOL/USDT", "EUR/USD", "XAU/USD", "NVDA", "AAPL") }
 
   LazyColumn(
     modifier = modifier
@@ -432,7 +433,7 @@ fun CalculatorScreen(
           Spacer(modifier = Modifier.height(6.dp))
 
           LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(sampleSymbols) { sym ->
+            items(items = sampleSymbols, key = { it }) { sym ->
               FilterChip(
                 selected = state.symbol == sym,
                 onClick = { viewModel.updateSymbol(sym) },
@@ -471,7 +472,7 @@ fun CalculatorScreen(
           Spacer(modifier = Modifier.height(6.dp))
 
           LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(capitalPresets) { cap ->
+            items(items = capitalPresets, key = { it }) { cap ->
               FilterChip(
                 selected = state.totalCapital == cap,
                 onClick = { viewModel.updateCapital(cap) },
@@ -537,7 +538,7 @@ fun CalculatorScreen(
 
           // Risk Presets Row
           LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(riskPresets) { pct ->
+            items(items = riskPresets, key = { it.toString() }) { pct ->
               FilterChip(
                 selected = state.riskPercent == pct.toString(),
                 onClick = { viewModel.setRiskPreset(pct) },

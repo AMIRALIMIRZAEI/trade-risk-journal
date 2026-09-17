@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.model.ChecklistItemEntity
 import com.example.data.model.TradeEntity
@@ -14,9 +15,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+val MIGRATION_1_2 = object : Migration(1, 2) {
+  override fun migrate(db: SupportSQLiteDatabase) {
+    db.execSQL("ALTER TABLE trades ADD COLUMN emotion TEXT NOT NULL DEFAULT 'Calm'")
+    db.execSQL("ALTER TABLE trades ADD COLUMN lessonsLearned TEXT NOT NULL DEFAULT ''")
+  }
+}
+
 @Database(
   entities = [TradeEntity::class, ChecklistItemEntity::class],
-  version = 1,
+  version = 2,
   exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -36,6 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
           AppDatabase::class.java,
           "trade_journal_database"
         )
+          .addMigrations(MIGRATION_1_2)
           .addCallback(DatabaseCallback(scope))
           .fallbackToDestructiveMigration()
           .build()
@@ -91,7 +100,9 @@ abstract class AppDatabase : RoomDatabase() {
             notes = "Breakout above 4H resistance zone with high volume confirmation.",
             strategyTag = "Breakout",
             openTimestamp = now - (dayMillis * 6),
-            closeTimestamp = now - (dayMillis * 5)
+            closeTimestamp = now - (dayMillis * 5),
+            emotion = "Calm",
+            lessonsLearned = "Patient entry on candle close with pre-defined stops pays off."
           ),
           TradeEntity(
             symbol = "ETH/USDT",
@@ -110,7 +121,9 @@ abstract class AppDatabase : RoomDatabase() {
             notes = "Bearish divergence on 1H RSI with rejection at supply block.",
             strategyTag = "Reversal",
             openTimestamp = now - (dayMillis * 4),
-            closeTimestamp = now - (dayMillis * 4) + 14400000L
+            closeTimestamp = now - (dayMillis * 4) + 14400000L,
+            emotion = "Calm",
+            lessonsLearned = "Followed trading plan strictly and secured profit at key support."
           ),
           TradeEntity(
             symbol = "SOL/USDT",
@@ -129,7 +142,9 @@ abstract class AppDatabase : RoomDatabase() {
             notes = "Tested support but fakeout wick triggered stop loss.",
             strategyTag = "S/R Bounce",
             openTimestamp = now - (dayMillis * 3),
-            closeTimestamp = now - (dayMillis * 3) + 7200000L
+            closeTimestamp = now - (dayMillis * 3) + 7200000L,
+            emotion = "FOMO",
+            lessonsLearned = "Chased candle late after green run. Must wait for confirmed retest."
           ),
           TradeEntity(
             symbol = "EUR/USD",
@@ -148,7 +163,9 @@ abstract class AppDatabase : RoomDatabase() {
             notes = "Post-ECB dovish press conference trend continuation.",
             strategyTag = "Trend Continuation",
             openTimestamp = now - (dayMillis * 2),
-            closeTimestamp = now - (dayMillis * 1)
+            closeTimestamp = now - (dayMillis * 1),
+            emotion = "Calm",
+            lessonsLearned = "Macro alignment provides strongest momentum."
           ),
           TradeEntity(
             symbol = "NVDA",
@@ -163,7 +180,9 @@ abstract class AppDatabase : RoomDatabase() {
             status = TradeStatus.OPEN,
             notes = "Consolidation base breakout on earnings anticipation.",
             strategyTag = "Breakout",
-            openTimestamp = now - (dayMillis * 1)
+            openTimestamp = now - (dayMillis * 1),
+            emotion = "Calm",
+            lessonsLearned = ""
           )
         )
         tradeDao.insertTrades(starterTrades)

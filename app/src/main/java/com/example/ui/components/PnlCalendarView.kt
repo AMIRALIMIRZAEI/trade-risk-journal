@@ -72,6 +72,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 data class CalendarDayItem(
+  val id: String,
   val dayNumber: Int,
   val dateKey: String,
   val isCurrentMonth: Boolean,
@@ -99,8 +100,12 @@ fun PnlCalendarView(
       .sum()
   }
 
-  val selectedDayTrades = selectedDayKey?.let { dailyPnlMap[it]?.trades } ?: emptyList()
-  val selectedDaySummary = selectedDayKey?.let { dailyPnlMap[it] }
+  val selectedDayTrades = remember(selectedDayKey, dailyPnlMap) {
+    selectedDayKey?.let { dailyPnlMap[it]?.trades } ?: emptyList()
+  }
+  val selectedDaySummary = remember(selectedDayKey, dailyPnlMap) {
+    selectedDayKey?.let { dailyPnlMap[it] }
+  }
 
   Card(
     modifier = modifier
@@ -187,7 +192,7 @@ fun PnlCalendarView(
       Spacer(modifier = Modifier.height(14.dp))
 
       // Day of Week Header
-      val weekDays = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+      val weekDays = remember { listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat") }
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceAround
@@ -216,7 +221,7 @@ fun PnlCalendarView(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
       ) {
-        items(days) { dayItem ->
+        items(items = days, key = { it.id }) { dayItem ->
           CalendarDayCell(
             day = dayItem,
             isSelected = dayItem.dateKey == selectedDayKey,
@@ -322,11 +327,13 @@ private fun CalendarDayCell(
 
   Box(
     modifier = Modifier
-      .height(44.dp)
+      .height(46.dp)
       .clip(RoundedCornerShape(8.dp))
       .background(bgColor)
       .then(
         if (isSelected) Modifier.border(1.5.dp, IndigoPrimary, RoundedCornerShape(8.dp))
+        else if (isProfit) Modifier.border(1.dp, EmeraldGreen.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+        else if (isLoss) Modifier.border(1.dp, CrimsonRed.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
         else if (hasTrades) Modifier.border(0.5.dp, BorderSubtle, RoundedCornerShape(8.dp))
         else Modifier
       )
@@ -343,20 +350,20 @@ private fun CalendarDayCell(
         style = MaterialTheme.typography.bodySmall,
         fontWeight = if (hasTrades || isSelected) FontWeight.Bold else FontWeight.Normal,
         color = textColor,
-        fontSize = 12.sp
+        fontSize = 11.sp
       )
 
-      if (day.isCurrentMonth && pnl != null) {
+      if (day.isCurrentMonth && pnl != null && (hasTrades || pnl != 0.0)) {
         val shortPnlText = if (abs(pnl) >= 1000) {
-          String.format(Locale.US, "%s%.0fk", if (pnl > 0) "+" else "-", abs(pnl) / 1000)
+          String.format(Locale.US, "%s$%.1fk", if (pnl >= 0) "+" else "-", abs(pnl) / 1000)
         } else {
-          String.format(Locale.US, "%s%.0f", if (pnl > 0) "+" else "-", abs(pnl))
+          String.format(Locale.US, "%s$%.0f", if (pnl >= 0) "+" else "-", abs(pnl))
         }
         Text(
           text = shortPnlText,
           style = MaterialTheme.typography.labelSmall,
           fontWeight = FontWeight.ExtraBold,
-          color = if (isProfit) EmeraldGreenDark else CrimsonRed,
+          color = if (isProfit) EmeraldGreenDark else if (isLoss) CrimsonRed else TextMuted,
           fontSize = 9.sp,
           lineHeight = 10.sp
         )
@@ -492,6 +499,7 @@ private fun generateCalendarDays(
   for (i in 1 until firstDayOfWeek) {
     items.add(
       CalendarDayItem(
+        id = "lead_${year}_${month}_$i",
         dayNumber = 0,
         dateKey = "",
         isCurrentMonth = false,
@@ -508,6 +516,7 @@ private fun generateCalendarDays(
 
     items.add(
       CalendarDayItem(
+        id = "day_${year}_${month}_$day",
         dayNumber = day,
         dateKey = key,
         isCurrentMonth = true,
@@ -517,9 +526,11 @@ private fun generateCalendarDays(
   }
 
   // Padding to complete trailing row (multiple of 7)
+  var trailIndex = 1
   while (items.size % 7 != 0) {
     items.add(
       CalendarDayItem(
+        id = "trail_${year}_${month}_${trailIndex++}",
         dayNumber = 0,
         dateKey = "",
         isCurrentMonth = false,

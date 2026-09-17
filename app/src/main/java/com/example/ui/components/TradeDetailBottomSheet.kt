@@ -57,6 +57,7 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.model.ChecklistItemEntity
+import com.example.data.model.TradeEmotion
 import com.example.data.model.TradeEntity
 import com.example.data.model.TradeStatus
 import com.example.data.model.TradeType
@@ -151,6 +152,21 @@ fun TradeDetailBottomSheet(
                   style = MaterialTheme.typography.labelSmall,
                   fontWeight = FontWeight.Bold,
                   color = if (isLong) EmeraldGreenDark else CrimsonRed,
+                  modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+              }
+
+              val emotionObj = remember(trade.emotion) { TradeEmotion.fromLabel(trade.emotion) }
+              Spacer(modifier = Modifier.width(6.dp))
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = IndigoLightBg
+              ) {
+                Text(
+                  text = "${emotionObj.emoji} ${emotionObj.label}",
+                  style = MaterialTheme.typography.labelSmall,
+                  fontWeight = FontWeight.Bold,
+                  color = IndigoDark,
                   modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
               }
@@ -348,6 +364,36 @@ fun TradeDetailBottomSheet(
             color = TextPrimary,
             modifier = Modifier.padding(12.dp)
           )
+        }
+      }
+
+      // Psychology Reflection & Lessons Learned
+      if (trade.lessonsLearned.isNotBlank()) {
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+          text = "PSYCHOLOGY REFLECTION & LESSONS LEARNED",
+          style = MaterialTheme.typography.labelSmall,
+          fontWeight = FontWeight.Bold,
+          color = TextMuted
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = SurfaceSubtle,
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.Top
+          ) {
+            Text("🧠", fontSize = 16.sp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = trade.lessonsLearned,
+              style = MaterialTheme.typography.bodyMedium,
+              color = TextPrimary
+            )
+          }
         }
       }
 

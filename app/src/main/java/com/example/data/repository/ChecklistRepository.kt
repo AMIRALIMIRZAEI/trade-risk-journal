@@ -11,6 +11,9 @@ class ChecklistRepository(private val checklistDao: ChecklistDao) {
   suspend fun insertChecklistItem(item: ChecklistItemEntity): Long =
     checklistDao.insertChecklistItem(item)
 
+  suspend fun insertAll(items: List<ChecklistItemEntity>) =
+    checklistDao.insertAll(items)
+
   suspend fun updateChecklistItem(item: ChecklistItemEntity) =
     checklistDao.updateChecklistItem(item)
 
@@ -18,4 +21,6 @@ class ChecklistRepository(private val checklistDao: ChecklistDao) {
     checklistDao.deleteChecklistItem(item)
 
   suspend fun deleteById(id: Long) = checklistDao.deleteById(id)
+
+  suspend fun deleteAll() = checklistDao.deleteAll()
 }

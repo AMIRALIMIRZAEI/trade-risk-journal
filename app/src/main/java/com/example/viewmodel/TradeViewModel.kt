@@ -1,25 +1,33 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.model.AccountSettings
 import com.example.data.model.ChecklistItemEntity
+import com.example.data.model.TradeEmotion
 import com.example.data.model.TradeEntity
 import com.example.data.model.TradeStatus
 import com.example.data.model.TradeType
 import com.example.data.repository.ChecklistRepository
 import com.example.data.repository.TradeRepository
+import com.example.data.repository.UserPreferencesRepository
+import com.example.util.BackupPayload
+import com.example.util.BackupRestoreService
 import com.example.util.DateTimeUtils
 import com.example.util.ImageStorageHelper
 import com.example.util.RiskCalculator
+import com.example.util.TradeExportService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -61,6 +69,18 @@ data class DayPnlSummary(
   val trades: List<TradeEntity>
 )
 
+data class EmotionStat(
+  val emotion: String,
+  val emoji: String,
+  val totalTrades: Int,
+  val closedTrades: Int,
+  val winsCount: Int,
+  val lossesCount: Int,
+  val winRate: Double,
+  val netPnl: Double,
+  val avgPnl: Double
+)
+
 enum class TradeFilter {
   ALL,
   OPEN,
@@ -73,11 +93,13 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
 
   private val tradeRepository: TradeRepository
   private val checklistRepository: ChecklistRepository
+  private val userPreferencesRepository: UserPreferencesRepository
 
   init {
     val db = AppDatabase.getDatabase(application, viewModelScope)
     tradeRepository = TradeRepository(db.tradeDao())
     checklistRepository = ChecklistRepository(db.checklistDao())
+    userPreferencesRepository = UserPreferencesRepository(application)
   }
 
   val allTrades: StateFlow<List<TradeEntity>> = tradeRepository.allTrades
@@ -86,14 +108,30 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
   val checklistItems: StateFlow<List<ChecklistItemEntity>> = checklistRepository.allChecklistItems
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-  private val _accountSettings = MutableStateFlow(AccountSettings())
-  val accountSettings: StateFlow<AccountSettings> = _accountSettings.asStateFlow()
+  val accountSettings: StateFlow<AccountSettings> = userPreferencesRepository.accountSettingsFlow
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AccountSettings())
+
+  // Pre-computed slices for optimal UI performance and elimination of list filter recomposition overhead
+  val openTrades: StateFlow<List<TradeEntity>> = allTrades.map { trades ->
+    trades.filter { it.status == TradeStatus.OPEN }
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val recentTrades: StateFlow<List<TradeEntity>> = allTrades.map { trades ->
+    trades.take(5)
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val closedTrades: StateFlow<List<TradeEntity>> = allTrades.map { trades ->
+    trades.filter { it.status != TradeStatus.OPEN }
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   private val _filter = MutableStateFlow(TradeFilter.ALL)
   val filter: StateFlow<TradeFilter> = _filter.asStateFlow()
 
   private val _searchQuery = MutableStateFlow("")
   val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+  private val _emotionFilter = MutableStateFlow<String?>(null)
+  val emotionFilter: StateFlow<String?> = _emotionFilter.asStateFlow()
 
   private val _selectedMonth = MutableStateFlow(Calendar.getInstance())
   val selectedMonth: StateFlow<Calendar> = _selectedMonth.asStateFlow()
@@ -105,8 +143,9 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
   val filteredTrades: StateFlow<List<TradeEntity>> = combine(
     allTrades,
     _filter,
-    _searchQuery
-  ) { trades, filter, query ->
+    _searchQuery,
+    _emotionFilter
+  ) { trades, filter, query, emotionFilter ->
     trades.filter { trade ->
       val matchesFilter = when (filter) {
         TradeFilter.ALL -> true
@@ -118,10 +157,19 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
       val matchesQuery = query.isBlank() ||
           trade.symbol.contains(query, ignoreCase = true) ||
           trade.strategyTag.contains(query, ignoreCase = true) ||
-          trade.notes.contains(query, ignoreCase = true)
+          trade.notes.contains(query, ignoreCase = true) ||
+          trade.emotion.contains(query, ignoreCase = true) ||
+          trade.lessonsLearned.contains(query, ignoreCase = true)
 
-      matchesFilter && matchesQuery
+      val matchesEmotion = emotionFilter == null || trade.emotion.equals(emotionFilter, ignoreCase = true)
+
+      matchesFilter && matchesQuery && matchesEmotion
     }
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  // Trader Psychology Summary by Emotion
+  val psychologyStats: StateFlow<List<EmotionStat>> = allTrades.map { trades ->
+    computePsychologyStats(trades)
   }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   // Dashboard Summary Metrics
@@ -141,7 +189,7 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
   }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   // Monthly/Daily PnL map (DateKey -> DayPnlSummary)
-  val dailyPnlMap: StateFlow<Map<String, DayPnlSummary>> = allTrades.combine(_selectedMonth) { trades, _ ->
+  val dailyPnlMap: StateFlow<Map<String, DayPnlSummary>> = allTrades.map { trades ->
     val map = mutableMapOf<String, MutableList<TradeEntity>>()
     trades.forEach { trade ->
       val timestamp = trade.closeTimestamp ?: trade.openTimestamp
@@ -161,6 +209,10 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
 
   fun setSearchQuery(query: String) {
     _searchQuery.value = query
+  }
+
+  fun setEmotionFilter(emotion: String?) {
+    _emotionFilter.value = emotion
   }
 
   fun setSelectedMonth(calendar: Calendar) {
@@ -189,7 +241,17 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
 
   fun updateCapital(newCapital: Double) {
     if (newCapital > 0) {
-      _accountSettings.value = _accountSettings.value.copy(totalCapital = newCapital)
+      viewModelScope.launch {
+        userPreferencesRepository.saveTotalCapital(newCapital)
+      }
+    }
+  }
+
+  fun saveEquity(newEquity: Double) {
+    if (newEquity > 0) {
+      viewModelScope.launch {
+        userPreferencesRepository.saveLastSavedEquity(newEquity)
+      }
     }
   }
 
@@ -203,7 +265,13 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
-  fun closeTrade(trade: TradeEntity, exitPrice: Double, notes: String = "") {
+  fun closeTrade(
+    trade: TradeEntity,
+    exitPrice: Double,
+    notes: String = "",
+    closingEmotion: String? = null,
+    closingLesson: String? = null
+  ) {
     viewModelScope.launch {
       val (pnlDollars, pnlPercent) = RiskCalculator.calculateRealizedPnl(
         tradeType = trade.tradeType,
@@ -217,12 +285,21 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
         pnlDollars > 0 -> TradeStatus.CLOSED_WIN
         else -> TradeStatus.CLOSED_LOSS
       }
+      val finalEmotion = closingEmotion?.ifBlank { trade.emotion } ?: trade.emotion
+      val finalLessons = if (!closingLesson.isNullOrBlank()) {
+        if (trade.lessonsLearned.isNotBlank()) "${trade.lessonsLearned}\n$closingLesson" else closingLesson
+      } else {
+        trade.lessonsLearned
+      }
+
       val updatedTrade = trade.copy(
         status = status,
         exitPrice = exitPrice,
         realizedPnl = pnlDollars,
         realizedPnlPercent = pnlPercent,
         closeTimestamp = System.currentTimeMillis(),
+        emotion = finalEmotion,
+        lessonsLearned = finalLessons,
         notes = if (notes.isNotBlank()) "${trade.notes}\n[Exit Note]: $notes".trim() else trade.notes
       )
       tradeRepository.updateTrade(updatedTrade)
@@ -369,5 +446,124 @@ class TradeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     return points
+  }
+
+  private fun computePsychologyStats(trades: List<TradeEntity>): List<EmotionStat> {
+    val predefinedEmotions = listOf(
+      TradeEmotion.CALM,
+      TradeEmotion.FOMO,
+      TradeEmotion.REVENGE,
+      TradeEmotion.FEAR,
+      TradeEmotion.GREED
+    )
+
+    val grouped = trades.groupBy { it.emotion.ifBlank { "Calm" } }
+
+    return predefinedEmotions.map { emotionEnum ->
+      val emoTrades = grouped[emotionEnum.label] ?: emptyList()
+      val closedList = emoTrades.filter { it.status != TradeStatus.OPEN }
+      val wins = closedList.count { it.status == TradeStatus.CLOSED_WIN || (it.realizedPnl ?: 0.0) > 0 }
+      val losses = closedList.count { it.status == TradeStatus.CLOSED_LOSS || (it.realizedPnl ?: 0.0) < 0 }
+      val winRate = if (closedList.isNotEmpty()) (wins.toDouble() / closedList.size) * 100.0 else 0.0
+      val netPnl = closedList.sumOf { it.realizedPnl ?: 0.0 }
+      val avgPnl = if (closedList.isNotEmpty()) netPnl / closedList.size else 0.0
+
+      EmotionStat(
+        emotion = emotionEnum.label,
+        emoji = emotionEnum.emoji,
+        totalTrades = emoTrades.size,
+        closedTrades = closedList.size,
+        winsCount = wins,
+        lossesCount = losses,
+        winRate = winRate,
+        netPnl = netPnl,
+        avgPnl = avgPnl
+      )
+    }
+  }
+
+  // --- CSV Export Operations ---
+  fun exportCsvString(): String {
+    return TradeExportService.generateCsv(allTrades.value)
+  }
+
+  fun createShareCsvIntent(context: Context): Intent {
+    return TradeExportService.createShareIntent(context, allTrades.value)
+  }
+
+  fun writeCsvToUri(context: Context, uri: Uri): Boolean {
+    return TradeExportService.writeToUri(context, uri, allTrades.value)
+  }
+
+  // --- Backup & Restore Operations ---
+  fun exportDatabaseToJson(): String {
+    return BackupRestoreService.exportToJson(
+      trades = allTrades.value,
+      checklistItems = checklistItems.value,
+      totalCapital = accountSettings.value.totalCapital
+    )
+  }
+
+  fun createShareBackupIntent(context: Context): Intent {
+    return BackupRestoreService.createShareBackupIntent(context, exportDatabaseToJson())
+  }
+
+  fun writeBackupToUri(context: Context, uri: Uri): Boolean {
+    return BackupRestoreService.writeToUri(context, uri, exportDatabaseToJson())
+  }
+
+  fun restoreDatabaseFromJson(
+    jsonString: String,
+    replaceAll: Boolean = false,
+    onComplete: (Result<Int>) -> Unit
+  ) {
+    viewModelScope.launch {
+      val parseResult = BackupRestoreService.parseBackupJson(jsonString)
+      parseResult.onSuccess { payload ->
+        try {
+          if (replaceAll) {
+            tradeRepository.deleteAllTrades()
+            checklistRepository.deleteAll()
+          }
+
+          // Restore total capital if present
+          payload.totalCapital?.let { capital ->
+            if (capital > 0) {
+              userPreferencesRepository.saveTotalCapital(capital)
+            }
+          }
+
+          // Restore trades
+          if (payload.trades.isNotEmpty()) {
+            tradeRepository.insertTrades(payload.trades)
+          }
+
+          // Restore checklist items
+          if (payload.checklistItems.isNotEmpty()) {
+            checklistRepository.insertAll(payload.checklistItems)
+          }
+
+          onComplete(Result.success(payload.trades.size))
+        } catch (e: Exception) {
+          onComplete(Result.failure(e))
+        }
+      }.onFailure { error ->
+        onComplete(Result.failure(error))
+      }
+    }
+  }
+
+  fun restoreDatabaseFromUri(
+    context: Context,
+    uri: Uri,
+    replaceAll: Boolean = false,
+    onComplete: (Result<Int>) -> Unit
+  ) {
+    val json = BackupRestoreService.readFromUri(context, uri)
+    if (json != null) {
+      restoreDatabaseFromJson(json, replaceAll, onComplete)
+    } else {
+      onComplete(Result.failure(Exception("Failed to read JSON backup file from device")))
+    }
   }
 }
