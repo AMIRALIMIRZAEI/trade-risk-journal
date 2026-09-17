@@ -1,40 +1,48 @@
-# Trade Risk Journal
+Trade Risk Journal
 
-A position-size calculator and trade journal for Android — built so I stop doing risk math in my head before every trade.
+An Android position-size calculator and trade journal built to make risk management simple and repeatable.
 
-## Why
+«Built from a real problem: I wanted to stop doing risk calculations in my head before every trade.»
 
-Before I built this, my "risk management" was mental math I'd sometimes get wrong or just skip entirely when a trade felt urgent. This app forces the calculation every time: put in your capital, your risk tolerance, your stop-loss, and your leverage, and it tells you the position size — no guessing, no rounding in the wrong direction.
+✨ Features
 
-## What's in it
+- Position size calculator — calculate position size from capital, risk %, stop-loss %, and leverage.
+- Risk management — see risk amount and required margin before entering a trade.
+- Trade journal — record entries and exits and review whether you followed your plan.
+- Live recalculation — change an input and the related values update automatically.
 
-**Position size calculator.** Four inputs — total capital, risk %, stop-loss %, and leverage — and it works out how much to actually put into the trade.
+🧮 How it works
 
-**Trade journal.** A log of entries and exits, so six months from now I can check whether I actually followed my own plan or just told myself I did.
-
-## The formula
-
-```
 Risk Amount     = Capital × Risk %
 Position Size   = Risk Amount ÷ Stop-Loss %
 Margin Required = Position Size ÷ Leverage
-```
 
-Adjust any one input and everything downstream recalculates.
+The goal is to make the calculation explicit before a trade instead of relying on mental math.
 
-## Stack
+🛠 Tech Stack
 
-Android, Kotlin, Gradle.
+- Android
+- Kotlin
+- Gradle
 
-## Running it
+🚀 Getting Started
 
-```
-git clone <repo-url>
-```
+Clone the repository:
 
-Open the folder in Android Studio, let Gradle sync, hit run.
+git clone https://github.com/AMIRALIMIRZAEI/trade-risk-journal.git
 
-## Status
+Then open the project in Android Studio, let Gradle sync, and run it on an Android device or emulator.
 
-Personal tool, actively evolving — I add to it as my own trading habits change. Not financial advice, just the calculator I wish existed when I started.
-🎗🪬
+📱 Screenshots
+
+Screenshots and a short demo will be added as the app develops.
+
+📌 Status
+
+Personal project — actively evolving as I learn more about Android development and trading workflows.
+
+This project is for educational and personal use. It is not financial advice.
+
+🔎 Topics
+
+"android" "kotlin" "trading-journal" "position-size-calculator" "risk-management" "trade-journal"
